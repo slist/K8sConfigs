@@ -41,10 +41,8 @@ node {
 			error("Failed Deployment due to CB Container policy violations.")
 		}
 
-		// If no CBC K8s policy violations; confirm successful build via Slack - move to deployment of validated K8s
 		if(violations == false) {
 			echo "No violations occured"
-			sh "python3 /var/jenkins_home/app/success.py '${env.JOB_NAME}' '${env.BUILD_NUMBER}'"
 		}
 	}
 
