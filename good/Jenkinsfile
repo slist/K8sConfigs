@@ -53,8 +53,9 @@ node {
 
 			if(violations == true) {
 				slackSend(channel: "#build-alerts", blocks: blocks_fail)
-				slackUploadFile filePath: "cbctl_policy_violations.txt", initialComment: ""
+/*				slackUploadFile filePath: "cbctl_policy_violations.txt", initialComment: ""
 				echo "Violations occured. results of cbctl validate can be found in ${REPO}/${IMAGE}_validate.json and a summary in 'cbctl_policy_violations.txt'"
+*/
 			}
 		}
 
