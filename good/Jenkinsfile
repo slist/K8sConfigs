@@ -31,9 +31,10 @@ node {
 		catch (err) {
 			violations = true
 			echo "Build detected cbctl violations. Review Cbctl scan results."
-			slackSend(channel: "#build-alerts", blocks: blocks_fail)
-			slackUploadFile filePath: "validation_result.json", initialComment: ""
+
+			slackUploadFile filePath: "validation_result.json", initialComment: "k8s-object validate error"
 			echo "Violations occured. results of cbctl validate can be found in  validation_result.json"
+			cat validation_result.json
 			error("Failed Deployment due to CB Container policy violations.")
 		}
 
