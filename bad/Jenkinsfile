@@ -23,38 +23,24 @@ node {
 	stage('Validate K8s-object') {
 		try {
 			echo "Validate stage... Starting validate test for deployment.yaml."
-			sh '/var/jenkins_home/app/cbctl k8s-object validate -f bad/deployment.yaml -o json > deployment_manifest_validate.json'
+			sh '/var/jenkins_home/app/cbctl k8s-object validate -f bad/deployment.yaml >validation_result.txt'
 		}
 
 		catch (err) {
 			violations = true
 			echo "Build detected cbctl violations. Review Cbctl scan results."
+			slackSend(channel: "#build-alerts", blocks: blocks_fail)
+			slackUploadFile filePath: "validation_result.txt", initialComment: ""
+			echo "Violations occured. results of cbctl validate can be found in  validation_result.txt.txt"
+			error("Failed Deployment due to CB Container policy violations.")
 
 		}
 
-		// Post the results to Slack, upon success or failure, of cbctl validation against policy rules
-		stage('Slack Post - Validate k8s-object') {
-
-			// Simple loop added to allow python slack helper scripts, built within the ova, to work
-			try{
-				sh 'git clone https://github.com/slackapi/python-slack-sdk.git'
-			}
-			catch(exists){
-				echo 'already exists'
-			}
-			// If no CBC K8s policy violations; confirm successful build via Slack - move to deployment of validated k8
-			if(violations == false) {
-				echo "No violations occured - keen!"
-				sh "python3 /var/jenkins_home/app/success.py '${env.JOB_NAME}' '${env.BUILD_NUMBER}'"
-			}
-
-			// If CBC K8s policy violations triggered; output those violations to Slack, end deployment pipeline to allow for rectifying of violations prior to prod deployment
-			if(violations == true) {
-				sh 'python3 /var/jenkins_home/app/k8s_validate_slack.py deployment_manifest_validate.json'
-				sh "python3 /var/jenkins_home/app/failure.py '${env.JOB_NAME}' '${env.BUILD_NUMBER}' '${env.STAGE_NAME}'"
-				echo "Violations occured. results of cbctl validate can be found in deployment_manifest_validate.json"
-				error("Failed Deployment due to CB Container policy violations.")
-			}
+		// If no CBC K8s policy violations; confirm successful build via Slack - move to deployment of validated k8
+		if(violations == false) {
+			echo "No violations occured - keen!"
+			sh "python3 /var/jenkins_home/app/success.py '${env.JOB_NAME}' '${env.BUILD_NUMBER}'"
 		}
+
 	}
 }
