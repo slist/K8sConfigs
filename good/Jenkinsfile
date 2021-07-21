@@ -1,42 +1,86 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nodeapp
-  labels:
-    app: nodeapp
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: nodeapp
-  template:
-    metadata:
-      labels:
-        app: nodeapp
-    spec:
-      containers:
-      - name: nodeapp-test
-        image: stephanelist/nodeapp:dev
-        ports:
-        - containerPort: 8000
-        resources:
-          limits:
-            cpu: "1"
-            memory: "128Mi"
-          requests:
-            cpu: "0.5"
-            memory: "64Mi"
+node {
+	def app
 
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nodeapp-service
-spec:
-  type: NodePort
-  selector:
-    app: nodeapp
-  ports:
-    - nodePort: 30333
-      port: 8000
-      targetPort: 8000
+		/* Default to no violations. Used to specify whether no violations vs. violations
+		   message is sent. */
+		violations = false
+
+		stage('Clone repository') {
+			/* Cloning the Repository to jenkins-docker Workspace */
+			checkout scm
+		}
+
+		stage('Statical YAML Analyse') {
+			try {
+				echo "Analyse YAML..."
+				sh '/var/jenkins_home/app/cbctl k8s-object validate -f good/deployment.yaml'
+			}
+			catch (err) {
+				violations = true
+				echo "Build detected cbctl violations. Review Cbctl scan results."
+				slackSend color: "bad", message: "YAML deployment file incorrect! [Jenkins] '${env.JOB_NAME}' ${env.BUILD_URL}"
+			}
+		}
+
+
+		stage('YAML Deployment lint') {
+			sshagent(['stephane_ssh_key']) {
+				sh "scp -o StrictHostKeyChecking=no good/deployment.yaml stephane@192.168.1.97:/k8s/dev/"
+				try{
+					sh "ssh stephane@192.168.1.97 yamllint /k8s/dev/deployment.yaml"
+				}
+				catch(error){
+					echo "YAML syntax is incorrect"
+				}
+			}
+		}
+
+
+		stage('Send Validate Results') {
+			blocks_fail = [
+				[
+					"type": "section",
+				"text": [
+					"type": "mrkdwn",
+				"text": "View container details in CBC Console - <https://defense-prod05.conferdeploy.net/kubernetes/repos| here > \nView ${env.JOB_NAME} Build no. ${env.BUILD_NUMBER} - <${env.BUILD_URL}| here > "
+				]
+				]
+			]
+
+			if(violations == false) {
+				slackSend color: "good", message: "No violations! Woohoo! [Jenkins] '${env.JOB_NAME}' ${env.BUILD_URL}"
+			}
+
+			if(violations == true) {
+				slackSend(channel: "#build-alerts", blocks: blocks_fail)
+				slackUploadFile filePath: "cbctl_policy_violations.txt", initialComment: ""
+				echo "Violations occured. results of cbctl validate can be found in ${REPO}/${IMAGE}_validate.json and a summary in 'cbctl_policy_violations.txt'"
+			}
+		}
+
+		stage('Deployment test') {
+			sshagent(['stephane_ssh_key']) {
+				sh "scp -o StrictHostKeyChecking=no good/deployment.yaml stephane@192.168.1.97:/k8s/dev/"
+				try{
+					sh "ssh stephane@192.168.1.97 microk8s kubectl apply -f /k8s/dev/deployment.yaml && sleep 5"
+				}
+				catch(error){
+					echo "Welp... those didnt exist yet..."
+					sh "ssh stephane@192.168.1.97 microk8s kubectl create -f /k8s/dev/deployment.yaml && sleep 5"
+				}
+			}
+		}
+
+		stage('Connection Test') {
+			sh "curl 192.168.1.97:30333"
+			echo "Done testing"
+		}
+
+		stage('Cleanup') {
+			sshagent(['stephane_ssh_key']) {
+				sh "ssh stephane@192.168.1.97 microk8s kubectl delete deployment nodeapp"
+				sh "ssh stephane@192.168.1.97 microk8s kubectl delete service nodeapp-service"
+				sh "ssh stephane@192.168.1.97 microk8s kubectl get all"
+			}
+		}
+}
