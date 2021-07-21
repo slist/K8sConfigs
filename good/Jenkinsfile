@@ -1,25 +1,11 @@
 node {
-	def app
-
 	/* Default to no violations. Used to specify whether no violations vs. violations
 	   message is sent. */
 	violations = false
 
+	/* Cloning the Repository to jenkins-docker Workspace */
 	stage('Clone repository') {
-		/* Cloning the Repository to jenkins-docker Workspace */
 		checkout scm
-	}
-
-	stage('Statical YAML Analyse') {
-		try {
-			echo "Analyse YAML..."
-			sh '/var/jenkins_home/app/cbctl k8s-object validate -f good/deployment.yaml'
-		}
-		catch (err) {
-			violations = true
-			echo "Build detected cbctl violations. Review Cbctl scan results."
-			slackSend color: "bad", message: "YAML deployment file incorrect! [Jenkins] '${env.JOB_NAME}' ${env.BUILD_URL}"
-		}
 	}
 
 	stage('YAML Deployment lint') {
@@ -29,32 +15,29 @@ node {
 				sh "ssh stephane@192.168.1.97 yamllint /k8s/dev/deployment.yaml"
 			}
 			catch(error){
-				slackSend color: "bad", message: "YAML syntax incorrect! [Jenkins] '${env.JOB_NAME}' ${env.BUILD_URL}"
 				echo "YAML syntax is incorrect"
 			}
 		}
 	}
 
-	stage('Send Validate Results') {
-		blocks_fail = [
-			[
-				"type": "section",
-			"text": [
-				"type": "mrkdwn",
-				"text": "View container details in CBC Console - <https://defense-prod05.conferdeploy.net/kubernetes/repos| here > \nView ${env.JOB_NAME} Build no. ${env.BUILD_NUMBER} - <${env.BUILD_URL}| here > "
-					]
-				]
-			]
-
-		if(violations == false) {
-			slackSend color: "good", message: "No violations! Woohoo! [Jenkins] '${env.JOB_NAME}' ${env.BUILD_URL}"
+	stage('Validate K8s-object') {
+		try {
+			echo "Validate stage... Starting validate test for deployment.yaml."
+			sh '/var/jenkins_home/app/cbctl k8s-object validate -f good/deployment.yaml -o json > validation_result.json'
+		}
+		catch (err) {
+			violations = true
+			echo "Build detected cbctl violations. Review Cbctl scan results."
+			slackSend(channel: "#build-alerts", blocks: blocks_fail)
+			slackUploadFile filePath: "validation_result.json", initialComment: ""
+			echo "Violations occured. results of cbctl validate can be found in  validation_result.json"
+			error("Failed Deployment due to CB Container policy violations.")
 		}
 
-		if(violations == true) {
-			slackSend(channel: "#build-alerts", blocks: blocks_fail)
-/*			slackUploadFile filePath: "cbctl_policy_violations.txt", initialComment: ""
-			echo "Violations occured. results of cbctl validate can be found in ${REPO}/${IMAGE}_validate.json and a summary in 'cbctl_policy_violations.txt'"
-*/
+		// If no CBC K8s policy violations; confirm successful build via Slack - move to deployment of validated K8s
+		if(violations == false) {
+			echo "No violations occured"
+			sh "python3 /var/jenkins_home/app/success.py '${env.JOB_NAME}' '${env.BUILD_NUMBER}'"
 		}
 	}
 
