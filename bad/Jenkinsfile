@@ -34,7 +34,10 @@ node {
 
 			slackUploadFile filePath: "validation_result.json", initialComment: "k8s-object validate error"
 			echo "Violations occured. results of cbctl validate can be found in  validation_result.json"
-			cat validation_result.json
+			script {
+				def data = readFile(file: 'validation_result.json')
+				println(data) 
+			}
 			error("Failed Deployment due to CB Container policy violations.")
 		}
 
