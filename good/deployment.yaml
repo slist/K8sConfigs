@@ -19,6 +19,8 @@ spec:
           image: stephanelist/nodeapp:test
           ports:
             - containerPort: 8000
+          securityContext:
+            privileged: false
           resources:
             limits:
               cpu: "1"

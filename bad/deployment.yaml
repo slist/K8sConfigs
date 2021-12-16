@@ -19,6 +19,8 @@ spec:
           image: stephanelist/nodeapp:test
           ports:
             - containerPort: 8000
+          securityContext:
+            privileged: true # This field triggers failure!
 
 ---
 apiVersion: v1
